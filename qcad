@@ -1,0 +1,110 @@
+#!/bin/bash
+# /opt/bin/qcad
+# Enhanced QCAD launcher for Gentoo with --debug and auto-version support
+
+# Optional: Allow overriding version with CLI, e.g., --version 3.32.3
+# Initial flags
+DEBUG=0
+CUSTOM_VERSION=""
+USE_LATEST=0
+ARGS=()
+
+# --- Parse CLI args ---
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --debug)
+            DEBUG=1
+            shift
+            ;;
+        --version)
+            CUSTOM_VERSION="$2"
+            shift 2
+            ;;
+        --version=*)
+            CUSTOM_VERSION="${1#*=}"
+            shift
+            ;;
+        --latest)
+            USE_LATEST=1
+            shift
+            ;;
+        --show)
+            SHOW_VERSION=1
+            shift
+            ;;
+        *)
+            ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+
+
+
+# --- Determine QCAD version path ---
+if [[ "$USE_LATEST" -eq 1 ]]; then
+    CUSTOM_VERSION=$(ls -1d /opt/qcad-* 2>/dev/null | sort -V | tail -n1 | xargs -n1 basename)
+fi
+
+# Use eselect default if nothing else is specified
+if [[ -z "$CUSTOM_VERSION" ]]; then
+    echo "Launching qcad via Gentoo eselect default (from /opt/bin/qcad-bin)"
+    QCAD_BIN="/opt/bin/qcad-bin"
+    QCAD_DIR=$(dirname "$(readlink -f "$QCAD_BIN")")
+else
+    # Try exact dir match or fuzzy match
+    if [[ -d "/opt/$CUSTOM_VERSION" ]]; then
+        QCAD_DIR="/opt/$CUSTOM_VERSION"
+    else
+        MATCH=$(find /opt -maxdepth 2 -type f -name qcad-bin | grep "$CUSTOM_VERSION" | head -n1)
+        if [[ -n "$MATCH" ]]; then
+            QCAD_DIR=$(dirname "$MATCH")
+        else
+            echo "Error: QCAD version '$CUSTOM_VERSION' not found in /opt."
+            exit 1
+        fi
+    fi
+fi
+
+
+
+QCAD_BIN="$QCAD_DIR/qcad-bin"
+QCAD_LIB="$QCAD_DIR"
+QCAD_PLATFORM="$QCAD_DIR/platforms"
+
+# --- Export environment ---
+export LD_LIBRARY_PATH="$QCAD_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$QCAD_PLATFORM"
+export QT_AUTO_SCREEN_SCALE_FACTOR=1
+
+# Enable Qt debug plugin tracing if requested
+if [[ "$DEBUG" -eq 1 ]]; then
+    export QT_DEBUG_PLUGINS=1
+fi
+
+
+if [[ "$SHOW_VERSION" -eq 1 ]]; then
+    echo "QCAD version directory: $QCAD_DIR"
+    echo "Executable: $QCAD_BIN"
+    exit 0
+fi
+
+# --- Launch QCAD ---
+"$QCAD_BIN" "${ARGS[@]}"
+ret=$?
+
+# --- Post-run diagnostics ---
+if [ $ret -ne 0 ]; then
+    echo ""
+    echo "QCAD has unexpectedly quit."
+    echo ""
+    echo "Try using the offscreen or minimal platform plugin for headless systems:"
+    echo "$0 -platform offscreen"
+    echo ""
+    echo "You may also try disabling GTK style plugins with:"
+    echo "$0 -style plastique"
+    echo ""
+fi
+
+exit $ret
