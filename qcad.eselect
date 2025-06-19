@@ -1,0 +1,80 @@
+# -*-eselect-*-
+# QCAD eselect module for Gentoo - manage Pro QCAD versions in /opt
+
+DESCRIPTION="Manage multiple versions of QCAD installed in /opt"
+MAINTAINER="turtle@sql-ledger.com"
+SVN_DATE="2025-06-10"
+
+# === Internal helpers ===
+
+# List all available QCAD version directories
+get_versions() {
+    find /opt -maxdepth 2 -type f -name qcad-bin \
+        | sed 's|/opt/||;s|/qcad-bin||' \
+        | sort -V
+}
+
+# === list ===
+describe_list() { echo "Available QCAD versions:"; }
+list_targets()  { get_versions | nl; }
+do_list()       { list_targets; }
+
+# === show ===
+describe_show() { echo "Currently selected QCAD version:"; }
+show_current() {
+    if [[ -L /opt/bin/qcad-bin ]]; then
+        readlink -f /opt/bin/qcad-bin | sed 's|/opt/||;s|/qcad-bin||'
+    else
+        echo "(none)"
+    fi
+}
+do_show()       { show_current; }
+
+# === set ===
+describe_set()  { echo "Select a QCAD version:"; }
+set_target() {
+    local target=$1
+    local version
+    version=$(get_versions | sed -n "${target}p")
+
+    if [[ -z "$version" ]]; then
+        die -q "Invalid target number: $target"
+    fi
+
+    ln -sf "/opt/$version/qcad-bin" /opt/bin/qcad-bin
+    echo "Selected QCAD version: $version"
+}
+do_set() {
+    [[ $# -eq 1 ]] || die -q "Usage: eselect qcad set <number>"
+    set_target "$1"
+}
+
+# === unset ===
+describe_unset() { echo "Unset the currently selected QCAD version"; }
+do_unset() {
+    if [[ -L /opt/bin/qcad-bin ]]; then
+        rm -f /opt/bin/qcad-bin
+        echo "Unset QCAD symlink: /opt/bin/qcad-bin"
+    else
+        echo "No symlink to unset."
+    fi
+}
+
+# === validate ===
+describe_validate() { echo "Validate the currently selected QCAD symlink"; }
+do_validate() {
+    if [[ -L /opt/bin/qcad-bin ]]; then
+        local target
+        target=$(readlink -f /opt/bin/qcad-bin)
+        if [[ -x "$target" ]]; then
+            echo "Valid QCAD binary: $target"
+            return 0
+        else
+            echo "Invalid target: $target (missing or not executable)"
+            return 1
+        fi
+    else
+        echo "No QCAD version selected."
+        return 1
+    fi
+}
